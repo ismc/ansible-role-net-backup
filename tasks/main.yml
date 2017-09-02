@@ -1,0 +1,53 @@
+---
+- set_fact:
+    net_backup_root: "./backup"
+  when: net_backup_root is not defined
+ 
+- set_fact:
+    net_backup_file: "{{ net_backup_root }}/{{ inventory_hostname }}"
+
+- include: "{{ role_path }}/tasks/{{ ansible_network_os }}-backup-config.yml"
+  tags:
+    - net-backup-config
+
+- name: Remove the Timestamp from the file
+  lineinfile:
+    path: "{{ temp_backup_file }}"
+    state: absent
+    regexp: '^\!Time'
+  changed_when: False
+
+- name: Get MD5 of the temp file 
+  stat:
+    path: "{{ temp_backup_file }}" 
+    get_md5: yes 
+  register: temp_stat
+
+# - debug: var=temp_stat
+
+- name: Get MD5 of the backup file
+  stat:
+    path: "{{ net_backup_file }}"
+    get_md5: yes
+  register: backup_stat
+
+# - debug: var=backup_stat
+
+- name: Copy the temp to the destination
+  copy:
+    src: "{{ temp_backup_file }}"
+    dest: "{{ net_backup_file }}"
+    force: "{{ net_backup_force | default('no') }}"
+  register: copy_results
+
+- debug: msg="Config has changed"
+  when: backup_stat.stat.exists == true and temp_stat.stat.checksum != backup_stat.stat.checksum
+  changed_when: backup_stat.stat.exists == true and temp_stat.stat.checksum != backup_stat.stat.checksum
+
+# - debug: var=copy_results
+
+- name: Delete the temp file 
+  file:
+    path: "{{ temp_backup_file }}"
+    state: absent
+  changed_when: False
